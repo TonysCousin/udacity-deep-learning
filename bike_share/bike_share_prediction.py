@@ -127,20 +127,22 @@ class NeuralNetwork(object):
         #print("hidden_error = ")
         #print(hidden_error)
         
-        #hidden_error_term = hidden_error * self.activation_derivative(hidden_outputs) #this gives slightly wrong answers
-        hidden_error_term = hidden_error * hidden_outputs * (1.0 - hidden_outputs) #this passes unit test run_train
+        #jas - would be nice to use the activation_derivative here, but that requires
+        #      access to the hidden_inputs, which is unavailable in this method.
+        hidden_error_term = hidden_error * hidden_outputs * (1.0 - hidden_outputs)
         #print("hidden_error_term =")
         #print(hidden_error_term)
         
         # Weight step (input to hidden)
-        delta_weights_i_h += self.lr * hidden_error_term * X[:,None]
+        delta_weights_i_h += hidden_error_term * X[:,None]
         #print("delta_weights_i_h =")
         #print(delta_weights_i_h)
         
         # Weight step (hidden to output)
-        delta_weights_h_o += self.lr * output_error_term * hidden_outputs[:,None]
+        delta_weights_h_o += output_error_term * hidden_outputs[:,None]
         #print("delta_weights_h_o = ")
         #print(delta_weights_h_o)
+        
         return delta_weights_i_h, delta_weights_h_o
 
     def update_weights(self, delta_weights_i_h, delta_weights_h_o, n_records):
@@ -154,8 +156,8 @@ class NeuralNetwork(object):
 
         '''
         #jas
-        self.weights_hidden_to_output += delta_weights_h_o / n_records
-        self.weights_input_to_hidden += delta_weights_i_h / n_records
+        self.weights_hidden_to_output += self.lr * delta_weights_h_o / n_records
+        self.weights_input_to_hidden += self.lr * delta_weights_i_h / n_records
 
     def run(self, features):
         ''' Run a forward pass through the network with input features 
@@ -187,8 +189,7 @@ class NeuralNetwork(object):
 #########################################################
 # Set your hyperparameters here
 ##########################################################
-iterations = 4000
-learning_rate = 0.05
-hidden_nodes = 4
+iterations = 10000
+learning_rate = 0.2
+hidden_nodes = 7
 output_nodes = 1
-
