@@ -75,27 +75,15 @@ val_transform = transforms.Compose([transforms.CenterCrop(224),
                                                          std=[0.229, 0.224, 0.225])])
 
 train_data = datasets.ImageFolder("data/dogImages/train/", transform=train_transform)
-print("train_data defined: {:.1f} used".format(memory_gb()))
-
 val_data = datasets.ImageFolder("data/dogImages/valid/", transform=val_transform)
-print("val_data defined:  {:.1f} used".format(memory_gb()))
-
 test_data = datasets.ImageFolder("data/dogImages/test/", transform=val_transform)
-print("test_data defined:  {:.1f} used".format(memory_gb()))
-
 print("train_data size = ", len(train_data))
 print("val_data size   = ", len(val_data))
 print("test_data size  = ", len(test_data))
 
 train_loader = torch.utils.data.DataLoader(train_data, batch_size=batch_size, shuffle=True)
-print("train_loader defined:  {:.1f} used".format(memory_gb()))
-
 val_loader   = torch.utils.data.DataLoader(val_data, batch_size=batch_size)
-print("val_loader defined:  {:.1f} used".format(memory_gb()))
-
 test_loader  = torch.utils.data.DataLoader(test_data, batch_size=batch_size)
-print("test_loader defined:  {:.1f} used".format(memory_gb()))
-
 
 '''
 # quick test
@@ -205,7 +193,7 @@ class Net(nn.Module):
         x = self.pool(x)              # output 8 x 112 x 112
         x = F.relu(self.c2(x))       # output 16 x 112 x 112
         x = self.pool(x)              # output 16 x 56 x 56
-        x = x.view(num_batches, 1, -1) #should be [n, 1, 50176]
+        x = x.view(num_batches, -1) #should be [n, 50176]
 
         
         ''' skipping my real model below for garbage collection test
@@ -223,11 +211,11 @@ class Net(nn.Module):
         # flatten the image into a vector, one for each item in the batch
         x = x.view(num_batches, 1, -1)
         #print("Flattened x shape = ", x.shape)
+        x = self.dropout(x)
         x = F.relu(self.fc1(x))
-        x = self.dropout(x)
         
-        x = F.relu(self.fc2(x))
         x = self.dropout(x)
+        x = F.relu(self.fc2(x))
         '''
         
         x = self.fc3(x) #optimizer will apply the Softmax function
@@ -333,14 +321,14 @@ def train(n_epochs, loaders, model, optimizer, criterion, use_cuda, save_path):
             
             optimizer.zero_grad()
             output = model(data) # this is a vector of all breeds showing the probabilities
-            output = output.view(data.size(0), -1) #remove extraneous dimension with size 1
+            #output = output.view(data.size(0), -1) #remove extraneous dimension with size 1
             loss = criterion(output, target)
             loss.backward()
             optimizer.step()
             
             ## record the average training loss, using something like
             ## train_loss = train_loss + ((1 / (batch_idx + 1)) * (loss.data - train_loss))
-            train_loss += loss*data.size(0) #mult by batch size since the CrossEntropy calc divides it out
+            train_loss += loss.item()*data.size(0) #mult by batch size since the CrossEntropy calc divides it out
             
             # clean out stale GPU memory
             del data
@@ -365,9 +353,9 @@ def train(n_epochs, loaders, model, optimizer, criterion, use_cuda, save_path):
                 datav, targetv = datav.cuda(), targetv.cuda()
             ## update the average validation loss
             outputv = model(datav)
-            outputv = outputv.view(datav.size(0), -1)
+            #outputv = outputv.view(datav.size(0), -1)
             lossv = criterion(outputv, targetv)
-            valid_loss += lossv*datav.size(0)
+            valid_loss += lossv.item()*datav.size(0)
             
             # clean out stale GPU memory
             del datav
