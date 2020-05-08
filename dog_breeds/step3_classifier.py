@@ -169,56 +169,37 @@ class Net(nn.Module):
         # --- making this model overly simple to test cuda garbage collection problems
         
         self.pool = nn.MaxPool2d(2, 2)
-        self.c1 = nn.Conv2d(3, 8, 5, padding=2)
-        self.c2 = nn.Conv2d(8, 16, 3, padding=1)
-        #self.c3 = nn.Conv2d(16, 32, 3, padding=1)
+        self.c1 = nn.Conv2d(3, 16, 5, padding=2)
+        self.c2 = nn.Conv2d(16, 32, 3, padding=1)
+        self.c3 = nn.Conv2d(32, 48, 3, padding=1)
         #self.c4 = nn.Conv2d(32, 48, 3, padding=1)
         #self.c5 = nn.Conv2d(48, 48, 3, padding=1)
         
         #FC layers
         self.dropout = nn.Dropout(0.2)
-        #self.fc1 = nn.Linear(37632, 8192)
-        #self.fc2 = nn.Linear(8192, 512)
-        #self.fc3 = nn.Linear(512, 133)
+        self.fc1 = nn.Linear(37632, 1024)
+        self.fc2 = nn.Linear(1024, 133)
         
-        self.fc3 = nn.Linear(50176, 133)
     
     def forward(self, x):
         num_batches = x.shape[0]
         #print("Entering forward: x.shape = ", x.shape, ", num_batches = ", num_batches)
         
-       
-        # --- simplified for garbage collection test
-        x = F.relu(self.c1(x))        # output 8 x 224 x 224
-        x = self.pool(x)              # output 8 x 112 x 112
-        x = F.relu(self.c2(x))       # output 16 x 112 x 112
-        x = self.pool(x)              # output 16 x 56 x 56
-        x = x.view(num_batches, -1) #should be [n, 50176]
-
-        
-        ''' skipping my real model below for garbage collection test
-        ## Define forward behavior
-        x = F.relu(self.c1(x))        # output 8 x 224 x 224
-        x = F.relu(self.c2(x))        # output 16 x 224 x 224
+        x = F.relu(self.c1(x))        # output 16 x 224 x 224
         x = self.pool(x)              # output 16 x 112 x 112
-        x = F.relu(self.c3(x))        # output 32 x 112 x 112
-        x = F.relu(self.c4(x))        # output 48 x 112 x 112
-        x = self.pool(x)              # output 48 x 56 x 56
-        
-        x = F.relu(self.c5(x))        # output 48 x 56 x 56
+        x = F.relu(self.c2(x))        # output 32 x 112 x 112
+        x = self.pool(x)              # output 32 x 56 x 56
+        x = F.relu(self.c3(x))        # output 48 x 56 x 56
         x = self.pool(x)              # output 48 x 28 x 28
         
         # flatten the image into a vector, one for each item in the batch
-        x = x.view(num_batches, 1, -1)
+        x = x.view(num_batches, -1)   # should be [n, 37632]
         #print("Flattened x shape = ", x.shape)
         x = self.dropout(x)
         x = F.relu(self.fc1(x))
         
         x = self.dropout(x)
-        x = F.relu(self.fc2(x))
-        '''
-        
-        x = self.fc3(x) #optimizer will apply the Softmax function
+        x = self.fc2(x) #optimizer will apply the Softmax function
         
         return x
 
@@ -267,6 +248,7 @@ optimizer_scratch = optim.SGD(model_scratch.parameters(), lr=0.001)
 
 ########## cell 7 (train & validate)
 
+import time
 # the following import is required for training to be robust to truncated images
 from PIL import ImageFile
 ImageFile.LOAD_TRUNCATED_IMAGES = True
@@ -275,6 +257,7 @@ def train(n_epochs, loaders, model, optimizer, criterion, use_cuda, save_path):
     """returns trained model"""
     # initialize tracker for minimum validation loss
     valid_loss_min = np.Inf 
+    epoch_min = 0
     training_size = len(loaders['train'].dataset)
     valid_size = len(loaders['valid'].dataset)
     print("Entering training. Num training batches = ", len(loaders['train']),
@@ -288,6 +271,7 @@ def train(n_epochs, loaders, model, optimizer, criterion, use_cuda, save_path):
     else:
         print("Using the cpu")
     
+    start_time = time.time()
     for epoch in range(1, n_epochs+1):
         # initialize variables to monitor training and validation loss
         train_loss = 0.0
@@ -300,8 +284,8 @@ def train(n_epochs, loaders, model, optimizer, criterion, use_cuda, save_path):
         # target is a 1D vector of [batch_size], representing the index of each dog identified
         model.train()
         for batch_idx, (data, target) in enumerate(loaders['train']):
-            if (batch_idx % 100 == 0):
-                print("    Training on batch ", batch_idx, ", memory used = {:.3f} GB".format(memory_gb()))
+            #if (batch_idx % 100 == 0):
+                #print("    Training on batch ", batch_idx, ", memory used = {:.3f} GB".format(memory_gb()))
             #print("target.shape = ", target.shape, ", content =\n", target)
           
             # move to GPU
@@ -309,19 +293,8 @@ def train(n_epochs, loaders, model, optimizer, criterion, use_cuda, save_path):
                 data, target = data.cuda(), target.cuda()
           
             ## find the loss and update the model parameters accordingly
-            
-            # --- garbage collection test:  if I comment out 3 lines below
-            #          optimizer.zero_grad()
-            #          loss.backward()
-            #          optimizer.step()
-            #     then this loop is identical to the validation loop below, and it blows up.
-            #     By various permutations of uncommenting those lines, I determine that it is
-            #     the call to loss.backward() that is cleaning up the cuda gargabe in this loop
-            #     and preventing memory usage from growing uncontrolled.
-            
             optimizer.zero_grad()
             output = model(data) # this is a vector of all breeds showing the probabilities
-            #output = output.view(data.size(0), -1) #remove extraneous dimension with size 1
             loss = criterion(output, target)
             loss.backward()
             optimizer.step()
@@ -343,17 +316,16 @@ def train(n_epochs, loaders, model, optimizer, criterion, use_cuda, save_path):
         ######################    
         # validate the model #
         ######################
-        model.eval()          #////////////// uncomment this!
+        model.eval()
         #print(" Beginning validation.")
         for batch_idx, (datav, targetv) in enumerate(loaders['valid']):
-            if (batch_idx % 20 == 0):
-                print("    Validation on batch ", batch_idx, ", memory used = {:.3f} GB".format(memory_gb()))
+            #if (batch_idx % 20 == 0):
+                #print("    Validation on batch ", batch_idx, ", memory used = {:.3f} GB".format(memory_gb()))
             # move to GPU
             if use_cuda:
                 datav, targetv = datav.cuda(), targetv.cuda()
             ## update the average validation loss
             outputv = model(datav)
-            #outputv = outputv.view(datav.size(0), -1)
             lossv = criterion(outputv, targetv)
             valid_loss += lossv.item()*datav.size(0)
             
@@ -368,19 +340,22 @@ def train(n_epochs, loaders, model, optimizer, criterion, use_cuda, save_path):
         valid_loss /= valid_size
             
         # print training/validation statistics 
-        print('Epoch: {} \tTraining Loss: {:.6f} \tValidation Loss: {:.6f}'.format(
-            epoch, 
+        time_per_epoch = float(time.time() - start_time) / float(epoch)
+        print('Epoch: {}, Train Loss: {:.6f}, Val Loss: {:.6f}, Mem: {:.3f}GB, time/epoch={:.1f}s'.format(
+            epoch,
             train_loss,
-            valid_loss
+            valid_loss, memory_gb(), time_per_epoch
             ))
         
         ## TODO: save the model if validation loss has decreased
         if valid_loss < valid_loss_min:
             torch.save(model.state_dict(), 'model_scratch.pt')
             valid_loss_min = valid_loss
+            epoch_min = epoch
             
     # return trained model
-    print("///// Training complete.  Memory in use = {:.3f} GB".format(memory_gb()))
+    print("///// Training complet. Best model stored from epoch {}. Memory in use = {:.3f} GB".format(
+            epoch, memory_gb()))
     return model
 
 
