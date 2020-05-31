@@ -5,6 +5,7 @@ import os
 import pdb
 import pickle
 import argparse
+import imageio
 
 import warnings
 warnings.filterwarnings("ignore")
@@ -19,7 +20,7 @@ import scipy
 import scipy.misc
 
 
-def checkpoint(iteration, G_XtoY, G_YtoX, D_X, D_Y, checkpoint_dir='checkpoints_cyclegan'):
+def checkpoint(iteration, G_XtoY, G_YtoX, D_X, D_Y, checkpoint_dir='checkpoints'):
     """Saves the parameters of both generators G_YtoX, G_XtoY and discriminators D_X, D_Y.
         """
     G_XtoY_path = os.path.join(checkpoint_dir, 'G_XtoY.pkl')
@@ -58,7 +59,7 @@ def to_data(x):
     x = ((x +1)*255 / (2)).astype(np.uint8) # rescale to 0-255
     return x
 
-def save_samples(iteration, fixed_Y, fixed_X, G_YtoX, G_XtoY, batch_size=16, sample_dir='samples_cyclegan'):
+def save_samples(iteration, fixed_Y, fixed_X, G_YtoX, G_XtoY, batch_size=16, sample_dir='samples'):
     """Saves samples from both generators X->Y and Y->X.
         """
     # move input data to correct device
@@ -72,10 +73,12 @@ def save_samples(iteration, fixed_Y, fixed_X, G_YtoX, G_XtoY, batch_size=16, sam
     
     merged = merge_images(X, fake_Y, batch_size)
     path = os.path.join(sample_dir, 'sample-{:06d}-X-Y.png'.format(iteration))
-    scipy.misc.imsave(path, merged)
+    #scipy.misc.imsave(path, merged) #deprecated & no longer available
+    imageio.imwrite(path, merged)
     print('Saved {}'.format(path))
     
     merged = merge_images(Y, fake_X, batch_size)
     path = os.path.join(sample_dir, 'sample-{:06d}-Y-X.png'.format(iteration))
-    scipy.misc.imsave(path, merged)
+    #scipy.misc.imsave(path, merged)
+    imageio.imwrite(path, merged)
     print('Saved {}'.format(path))
